@@ -1,0 +1,30 @@
+{
+  "name": "calendar",
+  "private": true,
+  "version": "1.0.0",
+  "description": "",
+  "main": "package.json",
+  "author": "Roman Ganin <realetive@yandex.ru>",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "sanity start",
+    "test": "sanity check"
+  },
+  "keywords": [
+    "sanity"
+  ],
+  "dependencies": {
+    "@progress/kendo-ui": "^2019.1.130",
+    "@sanity/base": "^0.140.3",
+    "@sanity/components": "^0.140.4",
+    "@sanity/core": "^0.140.4",
+    "@sanity/default-layout": "^0.140.4",
+    "@sanity/default-login": "^0.140.3",
+    "@sanity/desk-tool": "^0.140.4",
+    "jquery": "^3.3.1",
+    "prop-types": "^15.6",
+    "react": "^16.2",
+    "react-dom": "^16.2"
+  },
+  "devDependencies": {}
+}
