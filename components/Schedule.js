@@ -1,110 +1,166 @@
-import PropTypes from 'prop-types'
-import React from 'react'
+import uuid from '@sanity/uuid';
+import React from 'react';
+import PropTypes from 'prop-types';
+
 import client from 'part:@sanity/base/client'
-import {PatchEvent, set, unset, setIfMissing} from 'part:@sanity/form-builder/patch-event'
+import {PatchEvent, set, unset, setIfMissing, insert} from 'part:@sanity/form-builder/patch-event'
+
 import $ from 'jquery'
 import '@progress/kendo-ui';
 import '@progress/kendo-ui/js/kendo.timezones';
 import '@progress/kendo-ui/js/cultures/kendo.culture.ru-RU';
 
-export default class Schedule extends React.PureComponent {
-  static propTypes = {
-    type: PropTypes.shape({
-      title: PropTypes.string.isRequired,
-      name: PropTypes.string.isRequired,
-      description: PropTypes.string
-    }).isRequired,
+const createPatchFrom = value => {
+  console.log( 'createPatchFrom', value );
+  return PatchEvent.from(set(value));
+};
 
-    value: PropTypes.shape({
-      _ref: PropTypes.string.isRequired,
-      _type: PropTypes.string.isRequired
-    }),
-
-    readOnly: PropTypes.bool,
-    level: PropTypes.number.isRequired,
-    onChange: PropTypes.func.isRequired
-  }
-
-  static defaultProps = {
-    readOnly: false,
-    value: undefined
-  }
-
-  state = {
-    isLoading: true,
-    events: []
-  }
-
+export default class Schedule extends React.Component {
   constructor() {
     super();
 
-    this.fetchObservable = client.observable
-      .fetch( '*[_type == "calendar" && _id in path("*")]' )
-      .subscribe( this.handleEventReceived )
+    this.state = {
+      events: []
+    };
   }
 
-  handleEventReceived = events => {
-    this.setState( {
-      events: events,
-      isLoading: false
+  render() {
+    const { value } = this.props;
+
+    return (
+      <div>
+        <link rel="stylesheet" href="http://kendo.cdn.telerik.com/2018.3.1017/styles/kendo.common.min.css" />
+        <link rel="stylesheet" href="http://kendo.cdn.telerik.com/2018.3.1017/styles/kendo.default.min.css" />
+        <div className="schedule" ref={ el => this.el = el } />
+        {/*<pre><code>{ JSON.stringify( (value || []).map( ({ _key, title }) => ({ _key, title }) ), null, 2 ) }</code></pre>*/}
+      </div>
+    )
+  }
+
+  addEvent = ( eventArr, cb ) => {
+    const { onChange } = this.props;
+    const { events } = this.state;
+
+    const newEvent = eventArr.map( event => {
+      event._key = uuid();
+      return event;
+    } );
+
+    const newValue = JSON.parse( JSON.stringify( [ ...events, ...newEvent ] ) );
+    const save = PatchEvent.from( set( newValue ) ); 
+
+    this.setState({
+      events: save.patches[0].value
+    }, () => {
+      onChange( save );
+      cb.success( newEvent );
+    })
+  }
+
+  editEvent = ( eventArr, cb ) => {
+    const { onChange } = this.props;
+    const { events } = this.state;
+    const normalize = {};
+
+    events.forEach( event => {
+      normalize[ event._key ] = event;
     } )
+
+    eventArr.forEach( updatedEvent => {
+      normalize[ updatedEvent._key ] = updatedEvent;
+    } )
+
+    const newValue = Object.keys( normalize ).map( key => {
+      return normalize[ key ]
+    } );
+
+    this.setState({
+      events: newValue
+    }, () => {
+      const newValueJSON = JSON.parse( JSON.stringify( newValue ) );
+      onChange(PatchEvent.from(set( newValueJSON )));
+      cb.success(cb.data.models);
+    })
+  }
+
+  deleteEvent = ( eventArr, cb ) => {
+    const { onChange } = this.props;
+    const { events } = this.state;
+    const newValue = events.filter( event => event._key !== eventArr[0]._key )
+
+    this.setState({
+      events: newValue
+    }, () => {
+      const newValueJSON = JSON.parse( JSON.stringify( newValue ) );
+      onChange(PatchEvent.from(set( newValueJSON )));
+      cb.success(cb.data.models)
+    })
   }
 
   componentDidMount() {
-    const {
-      events,
-      isLoading
-    } = this.state
-
-    this.$el = $( this.el );
+    const { value, onChange, type } = this.props;
+    this.setState({
+      events: value || []
+    });
 
     kendo.culture( 'ru-RU' );
+
+    this.$el = $( this.el );
     this.$el.kendoScheduler({
       date: new Date(),
       startTime: new Date(),
       height: 900,
       views: [
-        'day',
-        'week',
+        { type: 'day' },
+        { type: 'week' },
         { type: 'month', selected: true },
-        'agenda'
+        { type: 'agenda' }
       ],
       timezone: 'Europe/Moscow',
-      /*
       dataSource: {
-        batch: true,
-        transport: {
-          read: () => events,
-          update: ( response ) => { console.log( response ); },
-          create: ( response ) => { console.log( response ); },
-          destroy: ( response ) => { console.log( response ); },
-        },
-        schema: {
-          type: 'json',
-          data: 'result',
-          model: {
-            id: '_id',
-            fields: {
-              taskId: { from: '_id', type: 'string' },
-              title: { from: 'title', defaultValue: 'No title', validation: { required: true } },
-              start: { type: 'date', from: 'start' },
-              end: { type: 'date', from: 'end' },
-              startTimezone: { from: 'startTimezone' },
-              endTimezone: { from: 'endTimezone' },
-              description: { from: 'description' },
-              recurrenceId: { from: 'recurrenceID' },
-              recurrenceRule: { from: 'recurrenceRule' },
-              recurrenceException: { from: 'recurrenceException' },
-              isAllDay: { type: 'boolean', from: 'isAllDay' }
+          batch: true,
+          transport: {
+            read: response => {
+              response.success(value || []);
+            },
+            update: response => {
+              this.editEvent( response.data.models, response )
+            },
+            create: response => {
+              this.addEvent( response.data.models, response );
+            },
+            destroy: response => {
+              this.deleteEvent( response.data.models, response );
+            },
+          },
+          schema: {
+            type: 'json',
+            // data: 'events',
+            model: {
+              id: '_key',
+              fields: {
+                _key: { from: '_key', type: 'string' },
+                _type: { from: '_type', type: 'string', defaultValue: 'event' },
+                start: { from: 'start' , type: 'date'},
+                end: { from: 'end' , type: 'date'},
+                title: { from: 'title', type: 'string', defaultValue: 'No title' },
+                startTimezone: { from: 'startTimezone' },
+                endTimezone: { from: 'endTimezone' },
+                description: { from: 'description' },
+                recurrenceId: { from: 'recurrenceID' },
+                recurrenceRule: { from: 'recurrenceRule' },
+                recurrenceException: { from: 'recurrenceException' },
+                isAllDay: { type: 'boolean', from: 'isAllDay' }
+              }
             }
           }
-        }
       }
-      */
     });
 
+    this.scheduler = this.$el.data("kendoScheduler");
+
     const fitWidget = () => {
-      var widget = this.$el.data("kendoScheduler");
+      var widget = this.scheduler;
       var height = $(window).outerHeight();
 
       //size widget to take the whole view
@@ -119,26 +175,16 @@ export default class Schedule extends React.PureComponent {
       }, 500);
     });
 
+    setTimeout( fitWidget, 1000 );
+
     fitWidget();
   }
 
   componentWillUnmount() {
-    this.fetchObservable.unsubscribe();
-    this.$el.data("kendoScheduler").destroy();
+    this.scheduler.destroy();
   }
 
-  render() {
-    const { type, value, level, focusPath, onFocus, onBlur } = this.props
-    const { events, isLoading } = this.state
-
-    console.log( events );
-
-    return (
-      <>
-        <link rel="stylesheet" href="http://kendo.cdn.telerik.com/2018.3.1017/styles/kendo.common.min.css" />
-        <link rel="stylesheet" href="http://kendo.cdn.telerik.com/2018.3.1017/styles/kendo.default.min.css" />
-        <div className="schedule" ref={ el => this.el = el }></div>
-      </>
-    )
+  focus() {
+    this.el.focus();
   }
 }

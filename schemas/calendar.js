@@ -17,8 +17,8 @@ export default {
           type: 'object',
           fields: [
             {
-              name: 'directionId',
-              title: 'ID Направления',
+              name: 'title',
+              title: 'Название',
               type: 'string',
               required: true,
               validation: Rule => Rule.required(),
@@ -76,8 +76,8 @@ export default {
             }
           ]
         }
-      ]
+      ],
+      inputComponent: Schedule
     },
   ],
-  inputComponent: Schedule
 }
